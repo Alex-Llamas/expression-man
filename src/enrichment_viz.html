@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Genetic Trait Enrichment Visualizer</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --accent: #007bff;
+            --accent-hover: #0056b3;
+            --text-main: #333;
+            --text-muted: #6c757d;
+            --border-color: #dee2e6;
+            --shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+        }
+
+        .header {
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--text-muted);
+        }
+
+        select, input {
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        .search-container {
+            position: relative;
+            flex-grow: 1;
+            min-width: 300px;
+        }
+
+        #phenotype-search {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-top: none;
+            z-index: 1000;
+            max-height: 300px;
+            overflow-y: auto;
+            border-bottom-left-radius: 5px;
+            border-bottom-right-radius: 5px;
+            box-shadow: var(--shadow);
+            display: none;
+        }
+
+        .autocomplete-item {
+            padding: 10px;
+            cursor: pointer;
+        }
+
+        .autocomplete-item:hover {
+            background-color: #f1f1f1;
+        }
+
+        .viz-area {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            min-height: 600px;
+        }
+
+        .svg-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            position: relative;
+        }
+
+        .svg-container svg {
+            max-width: 100%;
+            max-height: 600px;
+        }
+
+        .info-panel {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .legend {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .legend-bar {
+            height: 20px;
+            width: 100%;
+            background: linear-gradient(to right, #0000ff, #e0e0e0, #ff0000);
+            border-radius: 3px;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--accent);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+            z-index: 1001;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            display: none;
+        }
+
+        .tissue {
+            cursor: pointer;
+            transition: fill 0.3s;
+        }
+
+        .tissue:hover {
+            stroke: black;
+            stroke-width: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card header">
+        <h1>Genetic Trait Enrichment Visualizer</h1>
+        <p>Map API data to anatomical tissues using EBI Anatomogram</p>
+    </div>
+
+    <div class="card controls">
+        <div class="search-container">
+            <div class="control-group">
+                <label for="phenotype-search">Search Phenotype/Trait</label>
+                <input type="text" id="phenotype-search" placeholder="Type to search (e.g. Type 2 Diabetes)...">
+                <div id="autocomplete-list" class="autocomplete-dropdown"></div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label for="aggregation-select">Aggregation</label>
+            <select id="aggregation-select">
+                <option value="max">Max</option>
+                <option value="avg">Average</option>
+                <option value="sum">Sum</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="scale-select">Scale</label>
+            <select id="scale-select">
+                <option value="normalized">Normalized (0-1)</option>
+                <option value="raw">Raw</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="gradient-select">Gradient</label>
+            <select id="gradient-select">
+                <option value="linear">Linear</option>
+                <option value="logarithmic">Logarithmic</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Gender</label>
+            <div class="toggle-container">
+                <span>M</span>
+                <label class="switch">
+                    <input type="checkbox" id="gender-toggle">
+                    <span class="slider"></span>
+                </label>
+                <span>F</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viz-area">
+        <div class="svg-container" id="svg-container">
+            <div class="loading-overlay" id="loading-overlay">Loading...</div>
+            <p id="placeholder-text">Select a phenotype to visualize data</p>
+        </div>
+        <div class="info-panel">
+            <div class="card">
+                <h3>Selected Trait</h3>
+                <p id="trait-name">None</p>
+                <p id="trait-description" style="font-size: 14px; color: var(--text-muted);"></p>
+            </div>
+            <div class="card legend">
+                <h3>Enrichment</h3>
+                <div class="legend-bar" id="legend-bar"></div>
+                <div class="legend-labels">
+                    <span id="legend-min">0</span>
+                    <span id="legend-max">1</span>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Details</h3>
+                <div id="tissue-details" style="font-size: 14px;">
+                    Hover over a tissue to see enrichment scores.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="tooltip" class="tooltip"></div>
+
+<script>
+    const MALE_SVG_URL = "https://raw.githubusercontent.com/ebi-gene-expression-group/anatomogram/master/src/svg/homo_sapiens.male.svg";
+    const FEMALE_SVG_URL = "https://raw.githubusercontent.com/ebi-gene-expression-group/anatomogram/master/src/svg/homo_sapiens.female.svg";
+    const PHENOTYPES_API = "https://bioindex.hugeamp.org/api/portal/phenotypes";
+    const ENRICHMENT_API = "https://bioindex.hugeamp.org/api/bio/query/global-enrichment?q=";
+
+    // Embedded mapping file to ensure single-file JS approach
+    const TISSUE_MAPPING = {"adipose_tissue": ["UBERON_0001013"], "adrenal_tissue": ["UBERON_0002369"], "bile_duct": ["UBERON_0002110"], "bladder_organ": ["UBERON_0001255", "UBERON_0002110"], "blood": ["UBERON_0000178"], "blood_vessel": ["UBERON_0000947", "UBERON_0001621", "UBERON_0001637", "UBERON_0001981"], "bone_tissue": ["UBERON_0002371", "UBERON_0002481", "UBERON_0007844"], "cardiovascular_system": ["UBERON_0000947", "UBERON_0000948", "UBERON_0001621", "UBERON_0001637", "UBERON_0001981", "UBERON_0002079", "UBERON_0002084", "UBERON_0002134", "UBERON_0002135", "UBERON_0002146", "UBERON_0006618"], "central_nervous_system": ["UBERON_0000451", "UBERON_0000955", "UBERON_0000956", "UBERON_0001021", "UBERON_0001225", "UBERON_0001870", "UBERON_0001871", "UBERON_0001876", "UBERON_0001954", "UBERON_0002037", "UBERON_0002240", "UBERON_0002245", "UBERON_0002421"], "colon": ["UBERON_0001052", "UBERON_0001153", "UBERON_0001154", "UBERON_0001155"], "connective_tissue": ["UBERON_0002481"], "duodenum": ["UBERON_0002114"], "embryonic_tissue": ["UBERON_0001987"], "esophagus": ["UBERON_0001043", "UBERON_0007650"], "eye": ["UBERON_0000966", "UBERON_0000970"], "female_gonad": ["UBERON_0000992", "UBERON_0003889"], "gastrointestinal_system": ["UBERON_0000945", "UBERON_0001043", "UBERON_0001052", "UBERON_0001153", "UBERON_0001154", "UBERON_0001155", "UBERON_0001264", "UBERON_0002107", "UBERON_0002108", "UBERON_0002110", "UBERON_0002114", "UBERON_0002116", "UBERON_0007650"], "gingiva": ["UBERON_0001013"], "gonad": ["UBERON_0000473", "UBERON_0000989", "UBERON_0000992", "UBERON_0000998", "UBERON_0001000", "UBERON_0001301", "UBERON_0002367", "UBERON_0003889"], "heart": ["UBERON_0000948", "UBERON_0002079", "UBERON_0002084", "UBERON_0002134", "UBERON_0002135", "UBERON_0002146", "UBERON_0006618"], "intestine": ["UBERON_0001052", "UBERON_0001153", "UBERON_0001154", "UBERON_0001155", "UBERON_0002108", "UBERON_0002114", "UBERON_0002116"], "kidney": ["UBERON_0001225", "UBERON_0002113", "UBERON_0002369"], "large_intestine": ["UBERON_0001052", "UBERON_0001153", "UBERON_0001154", "UBERON_0001155"], "limb": ["UBERON_0001134"], "liver": ["UBERON_0002107"], "lung": ["UBERON_0000977", "UBERON_0002048", "UBERON_0002185"], "lymphoid_tissue": ["UBERON_0000029", "UBERON_0002106"], "mammary_gland": ["UBERON_0000310"], "mouth": ["UBERON_0000167", "UBERON_0001044", "UBERON_0001723", "UBERON_0001736", "UBERON_0001831", "UBERON_0001871", "UBERON_0002372"], "muscle_structure": ["UBERON_0001103", "UBERON_0001134", "UBERON_0001135"], "olfactory_nerve": ["UBERON_0000004", "UBERON_0001706"], "pancreas": ["UBERON_0001264"], "peripheral_nervous_system": ["UBERON_0001021"], "placenta": ["UBERON_0001987"], "prostate_gland": ["UBERON_0002367"], "simple_tissue": ["UBERON_0001013"], "skin_of_body": ["UBERON_0000014"], "small_intestine": ["UBERON_0002108", "UBERON_0002114", "UBERON_0002116"], "spleen": ["UBERON_0002106"], "stem_cell": ["UBERON_0002371"], "stomach": ["UBERON_0000945"], "testis": ["UBERON_0000473", "UBERON_0000989", "UBERON_0000998", "UBERON_0001000", "UBERON_0001301"], "throat": ["UBERON_0000341", "UBERON_0001728", "UBERON_0003126"], "thymus": ["UBERON_0001013"], "thyroid_gland": ["UBERON_0000007", "UBERON_0002046"], "uterine_cervix": ["UBERON_0000002", "UBERON_0012249"], "uterus": ["UBERON_0000995", "UBERON_0001295"], "vagina": ["UBERON_0000996"]};
+
+    let phenotypes = [];
+    let currentPhenotype = null;
+    let enrichmentData = [];
+    let processedScores = {}; // UBERON_ID -> Score
+
+    const searchInput = document.getElementById('phenotype-search');
+    const autocompleteList = document.getElementById('autocomplete-list');
+    const aggregationSelect = document.getElementById('aggregation-select');
+    const scaleSelect = document.getElementById('scale-select');
+    const gradientSelect = document.getElementById('gradient-select');
+    const genderToggle = document.getElementById('gender-toggle');
+    const svgContainer = document.getElementById('svg-container');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const tooltip = document.getElementById('tooltip');
+
+    // Init
+    async function init() {
+        showLoading(true);
+        try {
+            const phenotypesRes = await fetch(PHENOTYPES_API);
+            const phenotypesData = await phenotypesRes.json();
+            phenotypes = phenotypesData.data;
+
+            setupSearch();
+            setupControls();
+
+            // Load initial SVG
+            await updateSVG();
+        } catch (error) {
+            console.error("Initialization failed:", error);
+            alert("Failed to load initial data. Please check connection.");
+        }
+        showLoading(false);
+    }
+
+    function showLoading(show) {
+        loadingOverlay.style.display = show ? 'flex' : 'none';
+    }
+
+    function setupSearch() {
+        searchInput.addEventListener('input', () => {
+            const val = searchInput.value.toLowerCase();
+            autocompleteList.innerHTML = '';
+            if (!val) {
+                autocompleteList.style.display = 'none';
+                return;
+            }
+
+            const filtered = phenotypes.filter(p =>
+                p.description.toLowerCase().includes(val) ||
+                p.name.toLowerCase().includes(val)
+            ).slice(0, 10);
+
+            if (filtered.length > 0) {
+                filtered.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'autocomplete-item';
+                    div.innerHTML = `<strong>${p.description}</strong> (${p.name})`;
+                    div.addEventListener('click', () => {
+                        selectPhenotype(p);
+                    });
+                    autocompleteList.appendChild(div);
+                });
+                autocompleteList.style.display = 'block';
+            } else {
+                autocompleteList.style.display = 'none';
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target !== searchInput) {
+                autocompleteList.style.display = 'none';
+            }
+        });
+    }
+
+    function setupControls() {
+        aggregationSelect.addEventListener('change', updateVisualization);
+        scaleSelect.addEventListener('change', updateVisualization);
+        gradientSelect.addEventListener('change', updateVisualization);
+        genderToggle.addEventListener('change', updateSVG);
+    }
+
+    async function selectPhenotype(p) {
+        currentPhenotype = p;
+        searchInput.value = p.description;
+        autocompleteList.style.display = 'none';
+        document.getElementById('trait-name').innerText = p.description;
+        document.getElementById('trait-description').innerText = `ID: ${p.name} | Group: ${p.group}`;
+
+        showLoading(true);
+        try {
+            const res = await fetch(ENRICHMENT_API + p.name);
+            const data = await res.json();
+            enrichmentData = data.data;
+            updateVisualization();
+        } catch (error) {
+            console.error("Failed to fetch enrichment data:", error);
+        }
+        showLoading(false);
+    }
+
+    async function updateSVG() {
+        showLoading(true);
+        const url = genderToggle.checked ? FEMALE_SVG_URL : MALE_SVG_URL;
+        try {
+            const res = await fetch(url);
+            let svgText = await res.text();
+
+            // Clean SVG colors
+            svgText = svgText.replace(/fill="#[A-Fa-f0-9]+"/g, 'fill="#e0e0e0"');
+
+            const placeholder = document.getElementById('placeholder-text');
+            if (placeholder) placeholder.remove();
+
+            const oldSvg = svgContainer.querySelector('svg');
+            if (oldSvg) oldSvg.remove();
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = svgText;
+            const svgEl = tempDiv.querySelector('svg');
+            svgEl.style.width = "100%";
+            svgEl.style.height = "100%";
+
+            svgContainer.appendChild(svgEl);
+
+            // Attach listeners to tissues
+            const allUids = new Set();
+            Object.values(TISSUE_MAPPING).forEach(uids => uids.forEach(uid => allUids.add(uid)));
+
+            allUids.forEach(uid => {
+                const el = document.getElementById(uid);
+                if (el) {
+                    el.classList.add('tissue');
+                    el.addEventListener('mouseenter', (e) => showTooltip(e, uid));
+                    el.addEventListener('mousemove', (e) => moveTooltip(e));
+                    el.addEventListener('mouseleave', hideTooltip);
+                }
+            });
+
+            if (enrichmentData.length > 0) {
+                updateVisualization();
+            }
+        } catch (error) {
+            console.error("Failed to load SVG:", error);
+        }
+        showLoading(false);
+    }
+
+    function updateVisualization() {
+        if (enrichmentData.length === 0) return;
+
+        const aggType = aggregationSelect.value;
+        const scaleType = scaleSelect.value;
+        const gradientType = gradientSelect.value;
+
+        // 1. Group enrichment by BASE tissue name
+        const tissueScores = {}; // baseTissueName -> [scores]
+        enrichmentData.forEach(d => {
+            const baseTissue = d.tissue.split('___').pop();
+            if (!tissueScores[baseTissue]) tissueScores[baseTissue] = [];
+            tissueScores[baseTissue].push(d.enrichment);
+        });
+
+        // 2. Aggregate scores per base tissue
+        const aggregatedTissueScores = {}; // baseTissueName -> score
+        Object.keys(tissueScores).forEach(tn => {
+            const scores = tissueScores[tn];
+            if (aggType === 'max') {
+                aggregatedTissueScores[tn] = Math.max(...scores);
+            } else if (aggType === 'avg') {
+                aggregatedTissueScores[tn] = scores.reduce((a, b) => a + b, 0) / scores.length;
+            } else if (aggType === 'sum') {
+                aggregatedTissueScores[tn] = scores.reduce((a, b) => a + b, 0);
+            }
+        });
+
+        // 3. Map to UBERON IDs
+        const uberonScores = {}; // UBERON_ID -> [scores]
+        Object.keys(TISSUE_MAPPING).forEach(pt => {
+            const score = aggregatedTissueScores[pt];
+            if (score !== undefined) {
+                TISSUE_MAPPING[pt].forEach(uid => {
+                    if (!uberonScores[uid]) uberonScores[uid] = [];
+                    uberonScores[uid].push(score);
+                });
+            }
+        });
+
+        // 4. Resolve multiple scores per UBERON ID (use max if multiple)
+        const finalUberonScores = {};
+        Object.keys(uberonScores).forEach(uid => {
+            finalUberonScores[uid] = Math.max(...uberonScores[uid]);
+        });
+
+        processedScores = finalUberonScores;
+
+        // 5. Normalization and Color Application
+        const scoresValues = Object.values(finalUberonScores);
+        const minScore = Math.min(...scoresValues, 0);
+        const maxScore = Math.max(...scoresValues, 0);
+        const absMax = Math.max(Math.abs(minScore), Math.abs(maxScore));
+
+        document.getElementById('legend-min').innerText = minScore.toFixed(2);
+        document.getElementById('legend-max').innerText = maxScore.toFixed(2);
+
+        const allUids = new Set();
+        Object.values(TISSUE_MAPPING).forEach(uids => uids.forEach(uid => allUids.add(uid)));
+
+        allUids.forEach(uid => {
+            const el = document.getElementById(uid);
+            if (el) {
+                const rawScore = finalUberonScores[uid];
+                if (rawScore !== undefined && rawScore !== 0) {
+                    let value;
+
+                    if (scaleType === 'normalized') {
+                        if (maxScore > minScore) {
+                            // Map [min, max] to [-1, 1] for bicolour gradient
+                            value = (rawScore - minScore) / (maxScore - minScore);
+                            value = (value * 2) - 1;
+                        } else {
+                            value = 0;
+                        }
+                    } else {
+                        // Raw relative to absolute max
+                        value = absMax > 0 ? rawScore / absMax : 0;
+                    }
+
+                    if (gradientType === 'logarithmic') {
+                        const sign = Math.sign(rawScore);
+                        const absScore = Math.abs(rawScore);
+                        const logMax = Math.log(1 + absMax);
+                        value = sign * (Math.log(1 + absScore) / logMax);
+                    }
+
+                    el.style.fill = getColor(value);
+                } else {
+                    el.style.fill = '#e0e0e0';
+                }
+            }
+        });
+    }
+
+    function getColor(value) {
+        if (value === 0) return '#e0e0e0';
+
+        if (value > 0) {
+            const r = 255;
+            const g = Math.floor(224 * (1 - value));
+            const b = Math.floor(224 * (1 - value));
+            return `rgb(${r}, ${g}, ${b})`;
+        } else {
+            const absVal = Math.abs(value);
+            const r = Math.floor(224 * (1 - absVal));
+            const g = Math.floor(224 * (1 - absVal));
+            const b = 255;
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+    }
+
+    function showTooltip(e, uid) {
+        const score = processedScores[uid];
+        const label = getLabelForUid(uid);
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `<strong>${label}</strong><br>Enrichment: ${score !== undefined ? score.toFixed(4) : 'N/A'}`;
+
+        document.getElementById('tissue-details').innerHTML = `
+            <strong>Tissue:</strong> ${label}<br>
+            <strong>UBERON:</strong> ${uid}<br>
+            <strong>Enrichment:</strong> ${score !== undefined ? score.toFixed(4) : 'No data'}
+        `;
+    }
+
+    function moveTooltip(e) {
+        tooltip.style.left = (e.pageX + 10) + 'px';
+        tooltip.style.top = (e.pageY + 10) + 'px';
+    }
+
+    function hideTooltip() {
+        tooltip.style.display = 'none';
+    }
+
+    function getLabelForUid(uid) {
+        for (const [pt, uids] of Object.entries(TISSUE_MAPPING)) {
+            if (uids.includes(uid)) return pt.replace(/_/g, ' ');
+        }
+        return uid;
+    }
+
+    init();
+</script>
+
+</body>
+</html>
