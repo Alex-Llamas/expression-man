@@ -304,6 +304,17 @@
         </div>
 
         <div class="control-group">
+            <label for="annotation-select">Annotation</label>
+            <select id="annotation-select">
+                <option value="All">All</option>
+                <option value="accessible_chromatin">Accessible Chromatin</option>
+                <option value="enhancer">Enhancer</option>
+                <option value="promoter">Promoter</option>
+                <option value="binding_sites">Binding Sites</option>
+            </select>
+        </div>
+
+        <div class="control-group">
             <label for="ancestry-select">Ancestry</label>
             <select id="ancestry-select">
                 <option value="All">All</option>
@@ -362,6 +373,16 @@
                 </label>
                 <span>F</span>
             </div>
+        </div>
+
+        <div class="control-group">
+            <label for="min-enrichment">Min Enrichment</label>
+            <input type="number" id="min-enrichment" step="0.1" placeholder="Any">
+        </div>
+
+        <div class="control-group">
+            <label for="max-pvalue">Max p-Value</label>
+            <input type="number" id="max-pvalue" step="0.001" min="0" max="1" placeholder="Any">
         </div>
 
         <div class="control-group">
@@ -433,9 +454,12 @@
     const aggregationSelect = document.getElementById('aggregation-select');
     const scaleSelect = document.getElementById('scale-select');
     const ancestrySelect = document.getElementById('ancestry-select');
+    const annotationSelect = document.getElementById('annotation-select');
     const gradientSelect = document.getElementById('gradient-select');
     const genderToggle = document.getElementById('gender-toggle');
     const anatomySearch = document.getElementById('anatomy-search');
+    const minEnrichmentInput = document.getElementById('min-enrichment');
+    const maxPValueInput = document.getElementById('max-pvalue');
     const showAllBtn = document.getElementById('show-all-btn');
     const svgContainer = document.getElementById('svg-container');
     const loadingOverlay = document.getElementById('loading-overlay');
@@ -504,12 +528,15 @@
 
     function setupControls() {
         dataTypeSelect.addEventListener('change', updateVisualization);
-        ancestrySelect.addEventListener('change', updateVisualization);
+        ancestrySelect.addEventListener('change', () => { currentPage = 1; updateVisualization(); renderTable(); });
+        annotationSelect.addEventListener('change', () => { currentPage = 1; updateVisualization(); renderTable(); });
         aggregationSelect.addEventListener('change', updateVisualization);
         scaleSelect.addEventListener('change', updateVisualization);
         gradientSelect.addEventListener('change', updateVisualization);
         genderToggle.addEventListener('change', updateSVG);
         anatomySearch.addEventListener('input', filterAnatomy);
+        minEnrichmentInput.addEventListener('input', () => { currentPage = 1; updateVisualization(); renderTable(); });
+        maxPValueInput.addEventListener('input', () => { currentPage = 1; updateVisualization(); renderTable(); });
         showAllBtn.addEventListener('click', showAllTissues);
     }
 
@@ -589,15 +616,23 @@
 
         const dataType = dataTypeSelect.value;
         const ancestry = ancestrySelect.value;
+        const annotation = annotationSelect.value;
         const aggType = aggregationSelect.value;
         const scaleType = scaleSelect.value;
         const gradientType = gradientSelect.value;
+        const minEnr = parseFloat(minEnrichmentInput.value);
+        const maxP = parseFloat(maxPValueInput.value);
 
         // 1. Group enrichment by BASE tissue name
         const tissueScores = {}; // baseTissueName -> [scores]
         enrichmentData.forEach(d => {
             // Filter by ancestry
             if (ancestry !== 'All' && d.ancestry !== ancestry) return;
+            // Filter by annotation
+            if (annotation !== 'All' && d.annotation !== annotation) return;
+            // Filter by thresholds
+            if (!isNaN(minEnr) && d.enrichment < minEnr) return;
+            if (!isNaN(maxP) && d.pValue > maxP) return;
 
             const baseTissue = d.tissue.split('___').pop();
             if (!tissueScores[baseTissue]) tissueScores[baseTissue] = [];
@@ -654,9 +689,19 @@
         const allUids = new Set();
         Object.values(TISSUE_MAPPING).forEach(uids => uids.forEach(uid => allUids.add(uid)));
 
-        allUids.forEach(uid => {
+        // Sort UIDs by score to draw highest on top
+        const sortedUids = Array.from(allUids).sort((a, b) => {
+            const scoreA = finalUberonScores[a] || 0;
+            const scoreB = finalUberonScores[b] || 0;
+            return scoreA - scoreB;
+        });
+
+        sortedUids.forEach(uid => {
             const el = document.getElementById(uid);
             if (el) {
+                // Move to end of its parent to bring to front
+                el.parentNode.appendChild(el);
+
                 const rawScore = finalUberonScores[uid];
                 if (rawScore !== undefined && rawScore !== 0) {
                     let value;
@@ -767,13 +812,26 @@
     let tableSortCol = null;
     let tableSortDir = 1; // 1 for asc, -1 for desc
     let tableFilters = {};
+    let activeFilterKey = null;
+    let renderTimeout = null;
+    let currentPage = 1;
+    const pageSize = 15;
 
     function renderTable() {
         const container = document.getElementById('table-container');
         if (!enrichmentData || enrichmentData.length === 0) {
-            container.innerHTML = '<p style="color: var(--text-muted);">No data available for this phenotype.</p>';
+            container.innerHTML = '';
+            const p = document.createElement('p');
+            p.style.color = 'var(--text-muted)';
+            p.textContent = 'No data available for this phenotype.';
+            container.appendChild(p);
             return;
         }
+
+        const annotation = annotationSelect.value;
+        const ancestry = ancestrySelect.value;
+        const minEnr = parseFloat(minEnrichmentInput.value);
+        const maxP = parseFloat(maxPValueInput.value);
 
         const columns = [
             { key: 'ancestry', label: 'Ancestry' },
@@ -785,6 +843,11 @@
 
         // Apply filters
         let filteredData = enrichmentData.filter(row => {
+            if (ancestry !== 'All' && row.ancestry !== ancestry) return false;
+            if (annotation !== 'All' && row.annotation !== annotation) return false;
+            if (!isNaN(minEnr) && row.enrichment < minEnr) return false;
+            if (!isNaN(maxP) && row.pValue > maxP) return false;
+
             return columns.every(col => {
                 const filterVal = tableFilters[col.key];
                 if (!filterVal) return true;
@@ -804,30 +867,118 @@
             });
         }
 
-        let html = '<table><thead><tr>';
-        columns.forEach(col => {
-            const sortIcon = tableSortCol === col.key ? (tableSortDir === 1 ? ' ▲' : ' ▼') : ' ↕';
-            html += `<th onclick="sortTable('${col.key}')">${col.label}<span class="sort-icon">${sortIcon}</span><br>
-                    <input type="text" class="table-filter-input" placeholder="Filter..."
-                        onclick="event.stopPropagation()"
-                        oninput="filterTableColumn('${col.key}', this.value)"
-                        value="${tableFilters[col.key] || ''}">
-                    </th>`;
-        });
-        html += '</tr></thead><tbody>';
+        const totalPages = Math.ceil(filteredData.length / pageSize);
+        if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+        const start = (currentPage - 1) * pageSize;
+        const pagedData = filteredData.slice(start, start + pageSize);
 
-        filteredData.forEach(row => {
-            html += '<tr>';
+        // Reuse table if it exists to avoid focus loss
+        let table = container.querySelector('table');
+        if (!table) {
+            container.innerHTML = '';
+            table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+
             columns.forEach(col => {
+                const th = document.createElement('th');
+                th.dataset.key = col.key;
+                th.onclick = () => sortTable(col.key);
+
+                const span = document.createElement('span');
+                span.className = 'col-label';
+                th.appendChild(span);
+
+                const icon = document.createElement('span');
+                icon.className = 'sort-icon';
+                th.appendChild(icon);
+
+                th.appendChild(document.createElement('br'));
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'table-filter-input';
+                input.placeholder = 'Filter...';
+                input.onclick = (e) => e.stopPropagation();
+                input.oninput = (e) => filterTableColumn(col.key, e.target.value);
+
+                th.appendChild(input);
+                headerRow.appendChild(th);
+            });
+
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            table.appendChild(document.createElement('tbody'));
+            container.appendChild(table);
+        }
+
+        // Update headers (sort icons and input values)
+        const ths = table.querySelectorAll('th');
+        ths.forEach((th, i) => {
+            const col = columns[i];
+            const sortIcon = tableSortCol === col.key ? (tableSortDir === 1 ? ' ▲' : ' ▼') : ' ↕';
+            th.querySelector('.col-label').textContent = col.label;
+            th.querySelector('.sort-icon').textContent = sortIcon;
+
+            const input = th.querySelector('.table-filter-input');
+            if (document.activeElement !== input) {
+                input.value = tableFilters[col.key] || '';
+            }
+        });
+
+        // Update body
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        pagedData.forEach(row => {
+            const tr = document.createElement('tr');
+            columns.forEach(col => {
+                const td = document.createElement('td');
                 let val = row[col.key];
                 if (typeof val === 'number') val = val.toFixed(4);
-                html += `<td>${val}</td>`;
+                td.textContent = val;
+                tr.appendChild(td);
             });
-            html += '</tr>';
+            tbody.appendChild(tr);
         });
 
-        html += '</tbody></table>';
-        container.innerHTML = html;
+        // Pagination controls
+        let pagination = container.querySelector('.pagination');
+        if (!pagination) {
+            pagination = document.createElement('div');
+            pagination.className = 'pagination';
+            pagination.style.marginTop = '10px';
+            pagination.style.display = 'flex';
+            pagination.style.justifyContent = 'center';
+            pagination.style.alignItems = 'center';
+            pagination.style.gap = '15px';
+            container.appendChild(pagination);
+        }
+        pagination.innerHTML = '';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = 'Previous';
+        prevBtn.disabled = currentPage === 1;
+        prevBtn.onclick = () => { currentPage--; renderTable(); };
+
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = 'Next';
+        nextBtn.disabled = currentPage >= totalPages;
+        nextBtn.onclick = () => { currentPage++; renderTable(); };
+
+        const info = document.createElement('span');
+        info.textContent = `Page ${currentPage} of ${totalPages} (${filteredData.length} total rows)`;
+
+        pagination.appendChild(prevBtn);
+        pagination.appendChild(info);
+        pagination.appendChild(nextBtn);
+    }
+
+    function filterTableColumn(key, val) {
+        activeFilterKey = key;
+        tableFilters[key] = val;
+        currentPage = 1;
+        if (renderTimeout) clearTimeout(renderTimeout);
+        renderTimeout = setTimeout(() => renderTable(), 300);
     }
 
     function sortTable(key) {
@@ -837,11 +988,6 @@
             tableSortCol = key;
             tableSortDir = 1;
         }
-        renderTable();
-    }
-
-    function filterTableColumn(key, val) {
-        tableFilters[key] = val;
         renderTable();
     }
 
