@@ -248,6 +248,42 @@
             stroke: black;
             stroke-width: 1px;
         }
+
+        .table-card {
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        th {
+            background-color: #f1f1f1;
+            cursor: pointer;
+            position: relative;
+            white-space: nowrap;
+        }
+        th:hover {
+            background-color: #e2e2e2;
+        }
+        .sort-icon {
+            font-size: 10px;
+            margin-left: 5px;
+        }
+        .table-filter-input {
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 5px;
+            padding: 4px;
+            font-size: 12px;
+            font-weight: normal;
+        }
     </style>
 </head>
 <body>
@@ -329,6 +365,11 @@
         </div>
 
         <div class="control-group">
+            <label for="anatomy-search">Search Anatomy</label>
+            <input type="text" id="anatomy-search" placeholder="Highlight (e.g. liver)...">
+        </div>
+
+        <div class="control-group">
             <label>&nbsp;</label>
             <button id="show-all-btn" style="padding: 8px 12px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--accent); color: white; cursor: pointer; font-size: 14px; font-weight: bold;">Show All Tissues</button>
         </div>
@@ -361,6 +402,13 @@
             </div>
         </div>
     </div>
+
+    <div class="card table-card">
+        <h3>Enrichment Data Table</h3>
+        <div id="table-container">
+            <p style="color: var(--text-muted);">Select a phenotype to see raw data.</p>
+        </div>
+    </div>
 </div>
 
 <div id="tooltip" class="tooltip"></div>
@@ -387,6 +435,7 @@
     const ancestrySelect = document.getElementById('ancestry-select');
     const gradientSelect = document.getElementById('gradient-select');
     const genderToggle = document.getElementById('gender-toggle');
+    const anatomySearch = document.getElementById('anatomy-search');
     const showAllBtn = document.getElementById('show-all-btn');
     const svgContainer = document.getElementById('svg-container');
     const loadingOverlay = document.getElementById('loading-overlay');
@@ -460,6 +509,7 @@
         scaleSelect.addEventListener('change', updateVisualization);
         gradientSelect.addEventListener('change', updateVisualization);
         genderToggle.addEventListener('change', updateSVG);
+        anatomySearch.addEventListener('input', filterAnatomy);
         showAllBtn.addEventListener('click', showAllTissues);
     }
 
@@ -476,6 +526,7 @@
             const data = await res.json();
             enrichmentData = data.data;
             updateVisualization();
+            renderTable();
         } catch (error) {
             console.error("Failed to fetch enrichment data:", error);
         }
@@ -657,13 +708,14 @@
 
     function showTooltip(e, uid) {
         const score = processedScores[uid];
-        const label = getLabelForUid(uid);
+        const labels = getLabelsForUid(uid);
+        const labelText = labels.length > 0 ? labels.join(', ') : uid;
         const dataType = dataTypeSelect.value === 'pvalue' ? '-log10(p-value)' : 'Enrichment';
         tooltip.style.display = 'block';
-        tooltip.innerHTML = `<strong>${label}</strong><br>${dataType}: ${score !== undefined ? score.toFixed(4) : 'N/A'}`;
+        tooltip.innerHTML = `<strong>${labelText}</strong><br>${dataType}: ${score !== undefined ? score.toFixed(4) : 'N/A'}`;
 
         document.getElementById('tissue-details').innerHTML = `
-            <strong>Tissue:</strong> ${label}<br>
+            <strong>Tissue:</strong> ${labelText}<br>
             <strong>UBERON:</strong> ${uid}<br>
             <strong>${dataType}:</strong> ${score !== undefined ? score.toFixed(4) : 'No data'}
         `;
@@ -678,20 +730,119 @@
         tooltip.style.display = 'none';
     }
 
-    function getLabelForUid(uid) {
+    function getLabelsForUid(uid) {
+        const labels = [];
         for (const [pt, uids] of Object.entries(TISSUE_MAPPING)) {
-            if (uids.includes(uid)) return pt.replace(/_/g, ' ');
+            if (uids.includes(uid)) labels.push(pt.replace(/_/g, ' '));
         }
-        return uid;
+        return labels;
+    }
+
+    function filterAnatomy() {
+        const query = anatomySearch.value.toLowerCase();
+        const svg = svgContainer.querySelector('svg');
+        if (!svg) return;
+        const tissues = svg.querySelectorAll('.tissue');
+        tissues.forEach(t => {
+            const labels = getLabelsForUid(t.id).map(l => l.toLowerCase());
+            const matches = labels.some(l => l.includes(query)) || t.id.toLowerCase().includes(query);
+            if (!query || matches) {
+                t.style.display = '';
+            } else {
+                t.style.display = 'none';
+            }
+        });
     }
 
     function showAllTissues() {
+        anatomySearch.value = '';
         const svg = svgContainer.querySelector('svg');
         if (!svg) return;
         const tissues = svg.querySelectorAll('.tissue');
         tissues.forEach(t => {
             t.style.display = '';
         });
+    }
+
+    let tableSortCol = null;
+    let tableSortDir = 1; // 1 for asc, -1 for desc
+    let tableFilters = {};
+
+    function renderTable() {
+        const container = document.getElementById('table-container');
+        if (!enrichmentData || enrichmentData.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-muted);">No data available for this phenotype.</p>';
+            return;
+        }
+
+        const columns = [
+            { key: 'ancestry', label: 'Ancestry' },
+            { key: 'annotation', label: 'Annotation' },
+            { key: 'tissue', label: 'Tissue' },
+            { key: 'enrichment', label: 'Enrichment' },
+            { key: 'pValue', label: 'p-Value' }
+        ];
+
+        // Apply filters
+        let filteredData = enrichmentData.filter(row => {
+            return columns.every(col => {
+                const filterVal = tableFilters[col.key];
+                if (!filterVal) return true;
+                const cellVal = String(row[col.key]).toLowerCase();
+                return cellVal.includes(filterVal.toLowerCase());
+            });
+        });
+
+        // Apply sort
+        if (tableSortCol) {
+            filteredData.sort((a, b) => {
+                const aVal = a[tableSortCol];
+                const bVal = b[tableSortCol];
+                if (aVal < bVal) return -1 * tableSortDir;
+                if (aVal > bVal) return 1 * tableSortDir;
+                return 0;
+            });
+        }
+
+        let html = '<table><thead><tr>';
+        columns.forEach(col => {
+            const sortIcon = tableSortCol === col.key ? (tableSortDir === 1 ? ' ▲' : ' ▼') : ' ↕';
+            html += `<th onclick="sortTable('${col.key}')">${col.label}<span class="sort-icon">${sortIcon}</span><br>
+                    <input type="text" class="table-filter-input" placeholder="Filter..."
+                        onclick="event.stopPropagation()"
+                        oninput="filterTableColumn('${col.key}', this.value)"
+                        value="${tableFilters[col.key] || ''}">
+                    </th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        filteredData.forEach(row => {
+            html += '<tr>';
+            columns.forEach(col => {
+                let val = row[col.key];
+                if (typeof val === 'number') val = val.toFixed(4);
+                html += `<td>${val}</td>`;
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function sortTable(key) {
+        if (tableSortCol === key) {
+            tableSortDir *= -1;
+        } else {
+            tableSortCol = key;
+            tableSortDir = 1;
+        }
+        renderTable();
+    }
+
+    function filterTableColumn(key, val) {
+        tableFilters[key] = val;
+        renderTable();
     }
 
     init();
