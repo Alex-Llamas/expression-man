@@ -376,6 +376,16 @@
         </div>
 
         <div class="control-group">
+            <label for="min-enrichment">Min Enrichment</label>
+            <input type="number" id="min-enrichment" step="0.1" placeholder="Any">
+        </div>
+
+        <div class="control-group">
+            <label for="max-pvalue">Max p-Value</label>
+            <input type="number" id="max-pvalue" step="0.001" min="0" max="1" placeholder="Any">
+        </div>
+
+        <div class="control-group">
             <label for="anatomy-search">Search Anatomy</label>
             <input type="text" id="anatomy-search" placeholder="Highlight (e.g. liver)...">
         </div>
@@ -448,6 +458,8 @@
     const gradientSelect = document.getElementById('gradient-select');
     const genderToggle = document.getElementById('gender-toggle');
     const anatomySearch = document.getElementById('anatomy-search');
+    const minEnrichmentInput = document.getElementById('min-enrichment');
+    const maxPValueInput = document.getElementById('max-pvalue');
     const showAllBtn = document.getElementById('show-all-btn');
     const svgContainer = document.getElementById('svg-container');
     const loadingOverlay = document.getElementById('loading-overlay');
@@ -516,13 +528,15 @@
 
     function setupControls() {
         dataTypeSelect.addEventListener('change', updateVisualization);
-        ancestrySelect.addEventListener('change', () => { updateVisualization(); renderTable(); });
-        annotationSelect.addEventListener('change', () => { updateVisualization(); renderTable(); });
+        ancestrySelect.addEventListener('change', () => { currentPage = 1; updateVisualization(); renderTable(); });
+        annotationSelect.addEventListener('change', () => { currentPage = 1; updateVisualization(); renderTable(); });
         aggregationSelect.addEventListener('change', updateVisualization);
         scaleSelect.addEventListener('change', updateVisualization);
         gradientSelect.addEventListener('change', updateVisualization);
         genderToggle.addEventListener('change', updateSVG);
         anatomySearch.addEventListener('input', filterAnatomy);
+        minEnrichmentInput.addEventListener('input', () => { currentPage = 1; updateVisualization(); renderTable(); });
+        maxPValueInput.addEventListener('input', () => { currentPage = 1; updateVisualization(); renderTable(); });
         showAllBtn.addEventListener('click', showAllTissues);
     }
 
@@ -606,6 +620,8 @@
         const aggType = aggregationSelect.value;
         const scaleType = scaleSelect.value;
         const gradientType = gradientSelect.value;
+        const minEnr = parseFloat(minEnrichmentInput.value);
+        const maxP = parseFloat(maxPValueInput.value);
 
         // 1. Group enrichment by BASE tissue name
         const tissueScores = {}; // baseTissueName -> [scores]
@@ -614,6 +630,9 @@
             if (ancestry !== 'All' && d.ancestry !== ancestry) return;
             // Filter by annotation
             if (annotation !== 'All' && d.annotation !== annotation) return;
+            // Filter by thresholds
+            if (!isNaN(minEnr) && d.enrichment < minEnr) return;
+            if (!isNaN(maxP) && d.pValue > maxP) return;
 
             const baseTissue = d.tissue.split('___').pop();
             if (!tissueScores[baseTissue]) tissueScores[baseTissue] = [];
@@ -670,9 +689,19 @@
         const allUids = new Set();
         Object.values(TISSUE_MAPPING).forEach(uids => uids.forEach(uid => allUids.add(uid)));
 
-        allUids.forEach(uid => {
+        // Sort UIDs by score to draw highest on top
+        const sortedUids = Array.from(allUids).sort((a, b) => {
+            const scoreA = finalUberonScores[a] || 0;
+            const scoreB = finalUberonScores[b] || 0;
+            return scoreA - scoreB;
+        });
+
+        sortedUids.forEach(uid => {
             const el = document.getElementById(uid);
             if (el) {
+                // Move to end of its parent to bring to front
+                el.parentNode.appendChild(el);
+
                 const rawScore = finalUberonScores[uid];
                 if (rawScore !== undefined && rawScore !== 0) {
                     let value;
@@ -785,6 +814,8 @@
     let tableFilters = {};
     let activeFilterKey = null;
     let renderTimeout = null;
+    let currentPage = 1;
+    const pageSize = 15;
 
     function renderTable() {
         const container = document.getElementById('table-container');
@@ -799,6 +830,8 @@
 
         const annotation = annotationSelect.value;
         const ancestry = ancestrySelect.value;
+        const minEnr = parseFloat(minEnrichmentInput.value);
+        const maxP = parseFloat(maxPValueInput.value);
 
         const columns = [
             { key: 'ancestry', label: 'Ancestry' },
@@ -812,6 +845,8 @@
         let filteredData = enrichmentData.filter(row => {
             if (ancestry !== 'All' && row.ancestry !== ancestry) return false;
             if (annotation !== 'All' && row.annotation !== annotation) return false;
+            if (!isNaN(minEnr) && row.enrichment < minEnr) return false;
+            if (!isNaN(maxP) && row.pValue > maxP) return false;
 
             return columns.every(col => {
                 const filterVal = tableFilters[col.key];
@@ -831,6 +866,11 @@
                 return 0;
             });
         }
+
+        const totalPages = Math.ceil(filteredData.length / pageSize);
+        if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+        const start = (currentPage - 1) * pageSize;
+        const pagedData = filteredData.slice(start, start + pageSize);
 
         // Reuse table if it exists to avoid focus loss
         let table = container.querySelector('table');
@@ -889,7 +929,7 @@
         // Update body
         const tbody = table.querySelector('tbody');
         tbody.innerHTML = '';
-        filteredData.forEach(row => {
+        pagedData.forEach(row => {
             const tr = document.createElement('tr');
             columns.forEach(col => {
                 const td = document.createElement('td');
@@ -900,11 +940,43 @@
             });
             tbody.appendChild(tr);
         });
+
+        // Pagination controls
+        let pagination = container.querySelector('.pagination');
+        if (!pagination) {
+            pagination = document.createElement('div');
+            pagination.className = 'pagination';
+            pagination.style.marginTop = '10px';
+            pagination.style.display = 'flex';
+            pagination.style.justifyContent = 'center';
+            pagination.style.alignItems = 'center';
+            pagination.style.gap = '15px';
+            container.appendChild(pagination);
+        }
+        pagination.innerHTML = '';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = 'Previous';
+        prevBtn.disabled = currentPage === 1;
+        prevBtn.onclick = () => { currentPage--; renderTable(); };
+
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = 'Next';
+        nextBtn.disabled = currentPage >= totalPages;
+        nextBtn.onclick = () => { currentPage++; renderTable(); };
+
+        const info = document.createElement('span');
+        info.textContent = `Page ${currentPage} of ${totalPages} (${filteredData.length} total rows)`;
+
+        pagination.appendChild(prevBtn);
+        pagination.appendChild(info);
+        pagination.appendChild(nextBtn);
     }
 
     function filterTableColumn(key, val) {
         activeFilterKey = key;
         tableFilters[key] = val;
+        currentPage = 1;
         if (renderTimeout) clearTimeout(renderTimeout);
         renderTimeout = setTimeout(() => renderTable(), 300);
     }
@@ -916,11 +988,6 @@
             tableSortCol = key;
             tableSortDir = 1;
         }
-        renderTable();
-    }
-
-    function filterTableColumn(key, val) {
-        tableFilters[key] = val;
         renderTable();
     }
 
