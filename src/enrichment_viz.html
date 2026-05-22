@@ -268,6 +268,14 @@
         </div>
 
         <div class="control-group">
+            <label for="data-type-select">Data Type</label>
+            <select id="data-type-select">
+                <option value="enrichment">Enrichment</option>
+                <option value="pvalue">-log10(p-value)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
             <label for="aggregation-select">Aggregation</label>
             <select id="aggregation-select">
                 <option value="max">Max</option>
@@ -352,6 +360,7 @@
 
     const searchInput = document.getElementById('phenotype-search');
     const autocompleteList = document.getElementById('autocomplete-list');
+    const dataTypeSelect = document.getElementById('data-type-select');
     const aggregationSelect = document.getElementById('aggregation-select');
     const scaleSelect = document.getElementById('scale-select');
     const gradientSelect = document.getElementById('gradient-select');
@@ -422,6 +431,7 @@
     }
 
     function setupControls() {
+        dataTypeSelect.addEventListener('change', updateVisualization);
         aggregationSelect.addEventListener('change', updateVisualization);
         scaleSelect.addEventListener('change', updateVisualization);
         gradientSelect.addEventListener('change', updateVisualization);
@@ -497,6 +507,7 @@
     function updateVisualization() {
         if (enrichmentData.length === 0) return;
 
+        const dataType = dataTypeSelect.value;
         const aggType = aggregationSelect.value;
         const scaleType = scaleSelect.value;
         const gradientType = gradientSelect.value;
@@ -506,7 +517,12 @@
         enrichmentData.forEach(d => {
             const baseTissue = d.tissue.split('___').pop();
             if (!tissueScores[baseTissue]) tissueScores[baseTissue] = [];
-            tissueScores[baseTissue].push(d.enrichment);
+
+            let val = d.enrichment;
+            if (dataType === 'pvalue') {
+                val = d.pValue > 0 ? -Math.log10(d.pValue) : 0;
+            }
+            tissueScores[baseTissue].push(val);
         });
 
         // 2. Aggregate scores per base tissue
@@ -609,13 +625,14 @@
     function showTooltip(e, uid) {
         const score = processedScores[uid];
         const label = getLabelForUid(uid);
+        const dataType = dataTypeSelect.value === 'pvalue' ? '-log10(p-value)' : 'Enrichment';
         tooltip.style.display = 'block';
-        tooltip.innerHTML = `<strong>${label}</strong><br>Enrichment: ${score !== undefined ? score.toFixed(4) : 'N/A'}`;
+        tooltip.innerHTML = `<strong>${label}</strong><br>${dataType}: ${score !== undefined ? score.toFixed(4) : 'N/A'}`;
 
         document.getElementById('tissue-details').innerHTML = `
             <strong>Tissue:</strong> ${label}<br>
             <strong>UBERON:</strong> ${uid}<br>
-            <strong>Enrichment:</strong> ${score !== undefined ? score.toFixed(4) : 'No data'}
+            <strong>${dataType}:</strong> ${score !== undefined ? score.toFixed(4) : 'No data'}
         `;
     }
 
