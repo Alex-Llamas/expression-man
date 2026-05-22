@@ -327,6 +327,11 @@
                 <span>F</span>
             </div>
         </div>
+
+        <div class="control-group">
+            <label>&nbsp;</label>
+            <button id="show-all-btn" style="padding: 8px 12px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--accent); color: white; cursor: pointer; font-size: 14px; font-weight: bold;">Show All Tissues</button>
+        </div>
     </div>
 
     <div class="viz-area">
@@ -382,6 +387,7 @@
     const ancestrySelect = document.getElementById('ancestry-select');
     const gradientSelect = document.getElementById('gradient-select');
     const genderToggle = document.getElementById('gender-toggle');
+    const showAllBtn = document.getElementById('show-all-btn');
     const svgContainer = document.getElementById('svg-container');
     const loadingOverlay = document.getElementById('loading-overlay');
     const tooltip = document.getElementById('tooltip');
@@ -454,6 +460,7 @@
         scaleSelect.addEventListener('change', updateVisualization);
         gradientSelect.addEventListener('change', updateVisualization);
         genderToggle.addEventListener('change', updateSVG);
+        showAllBtn.addEventListener('click', showAllTissues);
     }
 
     async function selectPhenotype(p) {
@@ -510,6 +517,10 @@
                     el.addEventListener('mouseenter', (e) => showTooltip(e, uid));
                     el.addEventListener('mousemove', (e) => moveTooltip(e));
                     el.addEventListener('mouseleave', hideTooltip);
+                    el.addEventListener('click', (e) => {
+                        el.style.display = 'none';
+                        hideTooltip();
+                    });
                 }
             });
 
@@ -672,6 +683,15 @@
             if (uids.includes(uid)) return pt.replace(/_/g, ' ');
         }
         return uid;
+    }
+
+    function showAllTissues() {
+        const svg = svgContainer.querySelector('svg');
+        if (!svg) return;
+        const tissues = svg.querySelectorAll('.tissue');
+        tissues.forEach(t => {
+            t.style.display = '';
+        });
     }
 
     init();
