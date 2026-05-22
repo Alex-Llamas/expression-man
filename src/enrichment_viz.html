@@ -268,6 +268,22 @@
         </div>
 
         <div class="control-group">
+            <label for="ancestry-select">Ancestry</label>
+            <select id="ancestry-select">
+                <option value="All">All</option>
+                <option value="AA">AA</option>
+                <option value="AF">AF</option>
+                <option value="EA">EA</option>
+                <option value="EU">EU</option>
+                <option value="GME">GME</option>
+                <option value="HS">HS</option>
+                <option value="Mixed">Mixed</option>
+                <option value="SA">SA</option>
+                <option value="SSAF">SSAF</option>
+            </select>
+        </div>
+
+        <div class="control-group">
             <label for="data-type-select">Data Type</label>
             <select id="data-type-select">
                 <option value="enrichment">Enrichment</option>
@@ -363,6 +379,7 @@
     const dataTypeSelect = document.getElementById('data-type-select');
     const aggregationSelect = document.getElementById('aggregation-select');
     const scaleSelect = document.getElementById('scale-select');
+    const ancestrySelect = document.getElementById('ancestry-select');
     const gradientSelect = document.getElementById('gradient-select');
     const genderToggle = document.getElementById('gender-toggle');
     const svgContainer = document.getElementById('svg-container');
@@ -432,6 +449,7 @@
 
     function setupControls() {
         dataTypeSelect.addEventListener('change', updateVisualization);
+        ancestrySelect.addEventListener('change', updateVisualization);
         aggregationSelect.addEventListener('change', updateVisualization);
         scaleSelect.addEventListener('change', updateVisualization);
         gradientSelect.addEventListener('change', updateVisualization);
@@ -508,6 +526,7 @@
         if (enrichmentData.length === 0) return;
 
         const dataType = dataTypeSelect.value;
+        const ancestry = ancestrySelect.value;
         const aggType = aggregationSelect.value;
         const scaleType = scaleSelect.value;
         const gradientType = gradientSelect.value;
@@ -515,6 +534,9 @@
         // 1. Group enrichment by BASE tissue name
         const tissueScores = {}; // baseTissueName -> [scores]
         enrichmentData.forEach(d => {
+            // Filter by ancestry
+            if (ancestry !== 'All' && d.ancestry !== ancestry) return;
+
             const baseTissue = d.tissue.split('___').pop();
             if (!tissueScores[baseTissue]) tissueScores[baseTissue] = [];
 
