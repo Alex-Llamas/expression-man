@@ -344,9 +344,16 @@
         </div>
 
         <div class="control-group" style="flex-basis: 45%;">
-            <label for="cors-proxy-input">CORS Proxy (Optional)</label>
-            <input type="text" id="cors-proxy-input" placeholder="e.g. https://cors-anywhere.herokuapp.com/" style="width: 100%;">
-            <small style="color: var(--text-muted); font-size: 11px;">Use a proxy if you encounter CORS errors during local development.</small>
+            <label for="cors-proxy-select">CORS Proxy Preset</label>
+            <select id="cors-proxy-select">
+                <option value="none">None</option>
+                <option value="https://api.allorigins.win/raw?url=">AllOrigins</option>
+                <option value="https://thingproxy.freeboard.io/fetch/">ThingProxy</option>
+                <option value="https://cors-anywhere.herokuapp.com/">CORS Anywhere</option>
+                <option value="custom">Custom</option>
+            </select>
+            <input type="text" id="cors-proxy-input" placeholder="Manual proxy URL..." style="width: 100%; margin-top: 5px;">
+            <small style="color: var(--text-muted); font-size: 11px;">Use a proxy if you encounter CORS errors. Manual URL can be used for 'Custom'.</small>
         </div>
 
         <div class="search-container">
@@ -508,6 +515,7 @@
     const geneAutocompleteList = document.getElementById('gene-autocomplete-list');
     const thresholdInput = document.getElementById('threshold-input');
     const baseUrlInput = document.getElementById('base-url-input');
+    const corsProxySelect = document.getElementById('cors-proxy-select');
     const corsProxyInput = document.getElementById('cors-proxy-input');
 
     const dataTypeSelect = document.getElementById('data-type-select');
@@ -625,6 +633,15 @@
     }
 
     function setupControls() {
+        corsProxySelect.addEventListener('change', () => {
+            const val = corsProxySelect.value;
+            if (val === 'none') {
+                corsProxyInput.value = '';
+            } else if (val !== 'custom') {
+                corsProxyInput.value = val;
+            }
+        });
+
         apiTypeSelect.addEventListener('change', () => {
             const isGlobal = apiTypeSelect.value === 'global';
             globalSetupCard.style.display = isGlobal ? 'flex' : 'none';
@@ -691,7 +708,12 @@
 
                 const proxy = corsProxyInput.value.trim();
                 if (proxy) {
-                    url = proxy + (proxy.endsWith('/') ? '' : '/') + url;
+                    if (proxy.includes('?')) {
+                        // For proxies like AllOrigins that use a query parameter
+                        url = proxy + encodeURIComponent(url);
+                    } else {
+                        url = proxy + (proxy.endsWith('/') ? '' : '/') + url;
+                    }
                 }
             }
 
