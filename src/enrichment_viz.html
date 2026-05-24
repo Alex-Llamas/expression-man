@@ -295,23 +295,23 @@
     </div>
 
     <div class="card controls">
+        <div class="control-group">
+            <label for="api-type-select">API Source</label>
+            <select id="api-type-select">
+                <option value="global">Global Enrichment (BioIndex)</option>
+                <option value="signature">Tissue Signature API</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Global Enrichment Setup Card -->
+    <div id="global-setup-card" class="card controls">
         <div class="search-container">
             <div class="control-group">
                 <label for="phenotype-search">Search Phenotype/Trait</label>
-                <input type="text" id="phenotype-search" placeholder="Type to search (e.g. Type 2 Diabetes)...">
-                <div id="autocomplete-list" class="autocomplete-dropdown"></div>
+                <input type="text" id="phenotype-search" class="phenotype-input" placeholder="Type to search (e.g. Type 2 Diabetes)...">
+                <div class="autocomplete-dropdown autocomplete-list"></div>
             </div>
-        </div>
-
-        <div class="control-group">
-            <label for="annotation-select">Annotation</label>
-            <select id="annotation-select">
-                <option value="All">All</option>
-                <option value="accessible_chromatin">Accessible Chromatin</option>
-                <option value="enhancer">Enhancer</option>
-                <option value="promoter">Promoter</option>
-                <option value="binding_sites">Binding Sites</option>
-            </select>
         </div>
 
         <div class="control-group">
@@ -331,9 +331,57 @@
         </div>
 
         <div class="control-group">
+            <label for="max-pvalue">Max p-Value</label>
+            <input type="number" id="max-pvalue" step="0.001" min="0" max="1" value="0.05" placeholder="Any">
+        </div>
+    </div>
+
+    <!-- Tissue Signature Setup Card -->
+    <div id="signature-setup-card" class="card controls" style="display: none;">
+        <div class="control-group" style="flex-basis: 100%;">
+            <label for="base-url-input">API Base URL</label>
+            <input type="text" id="base-url-input" value="http://10.200.7.60:8000" style="width: 100%;">
+        </div>
+
+        <div class="search-container">
+            <div class="control-group">
+                <label for="phenotype-search-sig">Search Phenotype/Trait</label>
+                <input type="text" id="phenotype-search-sig" class="phenotype-input" placeholder="Type to search...">
+                <div class="autocomplete-dropdown autocomplete-list"></div>
+            </div>
+        </div>
+
+        <div class="search-container">
+            <div class="control-group">
+                <label for="gene-search">Search Gene</label>
+                <input type="text" id="gene-search" placeholder="Type to search (e.g. PPARG)...">
+                <div id="gene-autocomplete-list" class="autocomplete-dropdown"></div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label for="threshold-input">Threshold</label>
+            <input type="number" id="threshold-input" step="0.01" value="0.01" placeholder="0.01">
+        </div>
+    </div>
+
+    <!-- Common Controls Card -->
+    <div class="card controls">
+        <div class="control-group">
+            <label for="annotation-select">Annotation</label>
+            <select id="annotation-select">
+                <option value="All">All</option>
+                <option value="accessible_chromatin">Accessible Chromatin</option>
+                <option value="enhancer">Enhancer</option>
+                <option value="promoter">Promoter</option>
+                <option value="binding_sites">Binding Sites</option>
+            </select>
+        </div>
+
+        <div class="control-group" id="data-type-control">
             <label for="data-type-select">Data Type</label>
             <select id="data-type-select">
-                <option value="enrichment">Enrichment</option>
+                <option value="enrichment">Enrichment / Signature</option>
                 <option value="pvalue">-log10(p-value)</option>
             </select>
         </div>
@@ -376,13 +424,8 @@
         </div>
 
         <div class="control-group">
-            <label for="min-enrichment">Min Enrichment</label>
+            <label for="min-enrichment" id="min-enrichment-label">Min Enrichment</label>
             <input type="number" id="min-enrichment" step="0.1" value="0" placeholder="Any">
-        </div>
-
-        <div class="control-group">
-            <label for="max-pvalue">Max p-Value</label>
-            <input type="number" id="max-pvalue" step="0.001" min="0" max="1" value="0.05" placeholder="Any">
         </div>
 
         <div class="control-group">
@@ -439,17 +482,27 @@
     const FEMALE_SVG_URL = "https://raw.githubusercontent.com/ebi-gene-expression-group/anatomogram/master/src/svg/homo_sapiens.female.svg";
     const PHENOTYPES_API = "https://bioindex.hugeamp.org/api/portal/phenotypes";
     const ENRICHMENT_API = "https://bioindex.hugeamp.org/api/bio/query/global-enrichment?q=";
+    const GENE_MATCH_API = "https://bioindex.hugeamp.org/api/bio/match/gene?q=";
 
     // Embedded mapping file to ensure single-file JS approach
     const TISSUE_MAPPING = {"adipose_tissue": ["UBERON_0001013"], "adrenal_tissue": ["UBERON_0002369"], "bile_duct": ["UBERON_0002110"], "bladder_organ": ["UBERON_0001255", "UBERON_0002110"], "blood": ["UBERON_0000178"], "blood_vessel": ["UBERON_0000947", "UBERON_0001621", "UBERON_0001637", "UBERON_0001981"], "bone_tissue": ["UBERON_0002371", "UBERON_0002481", "UBERON_0007844"], "cardiovascular_system": ["UBERON_0000947", "UBERON_0000948", "UBERON_0001621", "UBERON_0001637", "UBERON_0001981", "UBERON_0002079", "UBERON_0002084", "UBERON_0002134", "UBERON_0002135", "UBERON_0002146", "UBERON_0006618"], "central_nervous_system": ["UBERON_0000451", "UBERON_0000955", "UBERON_0000956", "UBERON_0001021", "UBERON_0001225", "UBERON_0001870", "UBERON_0001871", "UBERON_0001876", "UBERON_0001954", "UBERON_0002037", "UBERON_0002240", "UBERON_0002245", "UBERON_0002421"], "colon": ["UBERON_0001052", "UBERON_0001153", "UBERON_0001154", "UBERON_0001155"], "connective_tissue": ["UBERON_0002481"], "duodenum": ["UBERON_0002114"], "embryonic_tissue": ["UBERON_0001987"], "esophagus": ["UBERON_0001043", "UBERON_0007650"], "eye": ["UBERON_0000966", "UBERON_0000970"], "female_gonad": ["UBERON_0000992", "UBERON_0003889"], "gastrointestinal_system": ["UBERON_0000945", "UBERON_0001043", "UBERON_0001052", "UBERON_0001153", "UBERON_0001154", "UBERON_0001155", "UBERON_0001264", "UBERON_0002107", "UBERON_0002108", "UBERON_0002110", "UBERON_0002114", "UBERON_0002116", "UBERON_0007650"], "gingiva": ["UBERON_0001013"], "gonad": ["UBERON_0000473", "UBERON_0000989", "UBERON_0000992", "UBERON_0000998", "UBERON_0001000", "UBERON_0001301", "UBERON_0002367", "UBERON_0003889"], "heart": ["UBERON_0000948", "UBERON_0002079", "UBERON_0002084", "UBERON_0002134", "UBERON_0002135", "UBERON_0002146", "UBERON_0006618"], "intestine": ["UBERON_0001052", "UBERON_0001153", "UBERON_0001154", "UBERON_0001155", "UBERON_0002108", "UBERON_0002114", "UBERON_0002116"], "kidney": ["UBERON_0001225", "UBERON_0002113", "UBERON_0002369"], "large_intestine": ["UBERON_0001052", "UBERON_0001153", "UBERON_0001154", "UBERON_0001155"], "limb": ["UBERON_0001134"], "liver": ["UBERON_0002107"], "lung": ["UBERON_0000977", "UBERON_0002048", "UBERON_0002185"], "lymphoid_tissue": ["UBERON_0000029", "UBERON_0002106"], "mammary_gland": ["UBERON_0000310"], "mouth": ["UBERON_0000167", "UBERON_0001044", "UBERON_0001723", "UBERON_0001736", "UBERON_0001831", "UBERON_0001871", "UBERON_0002372"], "muscle_structure": ["UBERON_0001103", "UBERON_0001134", "UBERON_0001135"], "olfactory_nerve": ["UBERON_0000004", "UBERON_0001706"], "pancreas": ["UBERON_0001264"], "peripheral_nervous_system": ["UBERON_0001021"], "placenta": ["UBERON_0001987"], "prostate_gland": ["UBERON_0002367"], "simple_tissue": ["UBERON_0001013"], "skin_of_body": ["UBERON_0000014"], "small_intestine": ["UBERON_0002108", "UBERON_0002114", "UBERON_0002116"], "spleen": ["UBERON_0002106"], "stem_cell": ["UBERON_0002371"], "stomach": ["UBERON_0000945"], "testis": ["UBERON_0000473", "UBERON_0000989", "UBERON_0000998", "UBERON_0001000", "UBERON_0001301"], "throat": ["UBERON_0000341", "UBERON_0001728", "UBERON_0003126"], "thymus": ["UBERON_0001013"], "thyroid_gland": ["UBERON_0000007", "UBERON_0002046"], "uterine_cervix": ["UBERON_0000002", "UBERON_0012249"], "uterus": ["UBERON_0000995", "UBERON_0001295"], "vagina": ["UBERON_0000996"]};
 
     let phenotypes = [];
     let currentPhenotype = null;
+    let currentGene = null;
     let enrichmentData = [];
     let processedScores = {}; // UBERON_ID -> Score
 
-    const searchInput = document.getElementById('phenotype-search');
-    const autocompleteList = document.getElementById('autocomplete-list');
+    const apiTypeSelect = document.getElementById('api-type-select');
+    const globalSetupCard = document.getElementById('global-setup-card');
+    const signatureSetupCard = document.getElementById('signature-setup-card');
+    const phenotypeInputs = document.querySelectorAll('.phenotype-input');
+    const autocompleteLists = document.querySelectorAll('.autocomplete-list');
+    const geneSearchInput = document.getElementById('gene-search');
+    const geneAutocompleteList = document.getElementById('gene-autocomplete-list');
+    const thresholdInput = document.getElementById('threshold-input');
+    const baseUrlInput = document.getElementById('base-url-input');
+
     const dataTypeSelect = document.getElementById('data-type-select');
     const aggregationSelect = document.getElementById('aggregation-select');
     const scaleSelect = document.getElementById('scale-select');
@@ -490,43 +543,98 @@
     }
 
     function setupSearch() {
-        searchInput.addEventListener('input', () => {
-            const val = searchInput.value.toLowerCase();
-            autocompleteList.innerHTML = '';
-            if (!val) {
-                autocompleteList.style.display = 'none';
+        phenotypeInputs.forEach((input, index) => {
+            const list = autocompleteLists[index];
+            input.addEventListener('input', () => {
+                const val = input.value.toLowerCase();
+                list.innerHTML = '';
+                if (!val) {
+                    list.style.display = 'none';
+                    return;
+                }
+
+                const filtered = phenotypes.filter(p =>
+                    p.description.toLowerCase().includes(val) ||
+                    p.name.toLowerCase().includes(val)
+                ).slice(0, 10);
+
+                if (filtered.length > 0) {
+                    filtered.forEach(p => {
+                        const div = document.createElement('div');
+                        div.className = 'autocomplete-item';
+                        div.innerHTML = `<strong>${p.description}</strong> (${p.name})`;
+                        div.addEventListener('click', () => {
+                            selectPhenotype(p);
+                        });
+                        list.appendChild(div);
+                    });
+                    list.style.display = 'block';
+                } else {
+                    list.style.display = 'none';
+                }
+            });
+        });
+
+        geneSearchInput.addEventListener('input', async () => {
+            const val = geneSearchInput.value;
+            geneAutocompleteList.innerHTML = '';
+            if (val.length < 2) {
+                geneAutocompleteList.style.display = 'none';
                 return;
             }
 
-            const filtered = phenotypes.filter(p =>
-                p.description.toLowerCase().includes(val) ||
-                p.name.toLowerCase().includes(val)
-            ).slice(0, 10);
+            try {
+                const res = await fetch(GENE_MATCH_API + val);
+                const data = await res.json();
+                const matchedGenes = data.data || [];
 
-            if (filtered.length > 0) {
-                filtered.forEach(p => {
-                    const div = document.createElement('div');
-                    div.className = 'autocomplete-item';
-                    div.innerHTML = `<strong>${p.description}</strong> (${p.name})`;
-                    div.addEventListener('click', () => {
-                        selectPhenotype(p);
+                if (matchedGenes.length > 0) {
+                    matchedGenes.slice(0, 10).forEach(gene => {
+                        const div = document.createElement('div');
+                        div.className = 'autocomplete-item';
+                        div.textContent = gene;
+                        div.addEventListener('click', () => {
+                            selectGene(gene);
+                        });
+                        geneAutocompleteList.appendChild(div);
                     });
-                    autocompleteList.appendChild(div);
-                });
-                autocompleteList.style.display = 'block';
-            } else {
-                autocompleteList.style.display = 'none';
+                    geneAutocompleteList.style.display = 'block';
+                } else {
+                    geneAutocompleteList.style.display = 'none';
+                }
+            } catch (error) {
+                console.error("Gene search failed:", error);
             }
         });
 
         document.addEventListener('click', (e) => {
-            if (e.target !== searchInput) {
-                autocompleteList.style.display = 'none';
+            if (!e.target.classList.contains('phenotype-input')) {
+                autocompleteLists.forEach(list => list.style.display = 'none');
+            }
+            if (e.target !== geneSearchInput) {
+                geneAutocompleteList.style.display = 'none';
             }
         });
     }
 
     function setupControls() {
+        apiTypeSelect.addEventListener('change', () => {
+            const isGlobal = apiTypeSelect.value === 'global';
+            globalSetupCard.style.display = isGlobal ? 'flex' : 'none';
+            signatureSetupCard.style.display = isGlobal ? 'none' : 'flex';
+            document.getElementById('data-type-control').style.display = isGlobal ? 'flex' : 'none';
+            document.getElementById('min-enrichment-label').textContent = isGlobal ? 'Min Enrichment' : 'Min Signature';
+
+            // Clear current data when switching APIs
+            enrichmentData = [];
+            currentPhenotype = null;
+            currentGene = null;
+            phenotypeInputs.forEach(input => input.value = '');
+            geneSearchInput.value = '';
+            updateVisualization();
+            renderTable();
+        });
+
         dataTypeSelect.addEventListener('change', updateVisualization);
         ancestrySelect.addEventListener('change', () => { currentPage = 1; updateVisualization(); renderTable(); });
         annotationSelect.addEventListener('change', () => { currentPage = 1; updateVisualization(); renderTable(); });
@@ -537,25 +645,69 @@
         anatomySearch.addEventListener('input', filterAnatomy);
         minEnrichmentInput.addEventListener('input', () => { currentPage = 1; updateVisualization(); renderTable(); });
         maxPValueInput.addEventListener('input', () => { currentPage = 1; updateVisualization(); renderTable(); });
+        thresholdInput.addEventListener('input', () => { if (currentPhenotype && currentGene) fetchData(); });
         showAllBtn.addEventListener('click', showAllTissues);
     }
 
     async function selectPhenotype(p) {
         currentPhenotype = p;
-        searchInput.value = p.description;
-        autocompleteList.style.display = 'none';
+        phenotypeInputs.forEach(input => input.value = p.description);
+        autocompleteLists.forEach(list => list.style.display = 'none');
         document.getElementById('trait-name').innerText = p.description;
         document.getElementById('trait-description').innerText = `ID: ${p.name} | Group: ${p.group}`;
 
+        fetchData();
+    }
+
+    async function selectGene(gene) {
+        currentGene = gene;
+        geneSearchInput.value = gene;
+        geneAutocompleteList.style.display = 'none';
+        fetchData();
+    }
+
+    async function fetchData() {
+        if (!currentPhenotype) return;
+
+        const apiType = apiTypeSelect.value;
+        if (apiType === 'signature' && !currentGene) return;
+
         showLoading(true);
         try {
-            const res = await fetch(ENRICHMENT_API + p.name);
+            let url;
+            if (apiType === 'global') {
+                url = ENRICHMENT_API + currentPhenotype.name;
+            } else {
+                const baseUrl = baseUrlInput.value.replace(/\/$/, "");
+                const threshold = thresholdInput.value || 0.01;
+                url = `${baseUrl}/api/v1/traits/${currentPhenotype.name}/genes/${currentGene}/tissue_signature?threshold=${threshold}`;
+            }
+
+            const res = await fetch(url);
             const data = await res.json();
-            enrichmentData = data.data;
+
+            if (apiType === 'global') {
+                enrichmentData = data.data.map(d => ({
+                    ...d,
+                    baseTissue: d.tissue.split('___').pop()
+                }));
+            } else {
+                // Signature API returns an array directly
+                enrichmentData = data.map(d => ({
+                    ...d,
+                    enrichment: d.signature_value,
+                    pValue: 0, // Not available in signature API
+                    ancestry: 'N/A', // Not available in signature API
+                    baseTissue: d.tissue_from_file
+                }));
+            }
             updateVisualization();
             renderTable();
         } catch (error) {
-            console.error("Failed to fetch enrichment data:", error);
+            console.error("Failed to fetch data:", error);
+            enrichmentData = [];
+            updateVisualization();
+            renderTable();
         }
         showLoading(false);
     }
@@ -612,8 +764,19 @@
     }
 
     function updateVisualization() {
-        if (enrichmentData.length === 0) return;
+        if (enrichmentData.length === 0) {
+            // Reset colors if no data
+            const allUids = new Set();
+            Object.values(TISSUE_MAPPING).forEach(uids => uids.forEach(uid => allUids.add(uid)));
+            allUids.forEach(uid => {
+                const el = document.getElementById(uid);
+                if (el) el.style.fill = '#e0e0e0';
+            });
+            processedScores = {};
+            return;
+        }
 
+        const apiType = apiTypeSelect.value;
         const dataType = dataTypeSelect.value;
         const ancestry = ancestrySelect.value;
         const annotation = annotationSelect.value;
@@ -626,19 +789,19 @@
         // 1. Group enrichment by BASE tissue name
         const tissueScores = {}; // baseTissueName -> [scores]
         enrichmentData.forEach(d => {
-            // Filter by ancestry
-            if (ancestry !== 'All' && d.ancestry !== ancestry) return;
+            // Filter by ancestry (only for global API)
+            if (apiType === 'global' && ancestry !== 'All' && d.ancestry !== ancestry) return;
             // Filter by annotation
             if (annotation !== 'All' && d.annotation !== annotation) return;
             // Filter by thresholds
             if (!isNaN(minEnr) && d.enrichment < minEnr) return;
-            if (!isNaN(maxP) && d.pValue > maxP) return;
+            if (apiType === 'global' && !isNaN(maxP) && d.pValue > maxP) return;
 
-            const baseTissue = d.tissue.split('___').pop();
+            const baseTissue = d.baseTissue;
             if (!tissueScores[baseTissue]) tissueScores[baseTissue] = [];
 
             let val = d.enrichment;
-            if (dataType === 'pvalue') {
+            if (apiType === 'global' && dataType === 'pvalue') {
                 val = d.pValue > 0 ? -Math.log10(d.pValue) : 0;
             }
             tissueScores[baseTissue].push(val);
@@ -823,30 +986,41 @@
             container.innerHTML = '';
             const p = document.createElement('p');
             p.style.color = 'var(--text-muted)';
-            p.textContent = 'No data available for this phenotype.';
+            p.textContent = 'No data available.';
             container.appendChild(p);
             return;
         }
 
+        const apiType = apiTypeSelect.value;
         const annotation = annotationSelect.value;
         const ancestry = ancestrySelect.value;
         const minEnr = parseFloat(minEnrichmentInput.value);
         const maxP = parseFloat(maxPValueInput.value);
 
-        const columns = [
-            { key: 'ancestry', label: 'Ancestry' },
-            { key: 'annotation', label: 'Annotation' },
-            { key: 'tissue', label: 'Tissue' },
-            { key: 'enrichment', label: 'Enrichment' },
-            { key: 'pValue', label: 'p-Value' }
-        ];
+        let columns;
+        if (apiType === 'global') {
+            columns = [
+                { key: 'ancestry', label: 'Ancestry' },
+                { key: 'annotation', label: 'Annotation' },
+                { key: 'tissue', label: 'Tissue' },
+                { key: 'enrichment', label: 'Enrichment' },
+                { key: 'pValue', label: 'p-Value' }
+            ];
+        } else {
+            columns = [
+                { key: 'annotation', label: 'Annotation' },
+                { key: 'tissue', label: 'Tissue' },
+                { key: 'baseTissue', label: 'Base Tissue' },
+                { key: 'signature_value', label: 'Signature Value' }
+            ];
+        }
 
         // Apply filters
         let filteredData = enrichmentData.filter(row => {
-            if (ancestry !== 'All' && row.ancestry !== ancestry) return false;
+            if (apiType === 'global' && ancestry !== 'All' && row.ancestry !== ancestry) return false;
             if (annotation !== 'All' && row.annotation !== annotation) return false;
             if (!isNaN(minEnr) && row.enrichment < minEnr) return false;
-            if (!isNaN(maxP) && row.pValue > maxP) return false;
+            if (apiType === 'global' && !isNaN(maxP) && row.pValue > maxP) return false;
 
             return columns.every(col => {
                 const filterVal = tableFilters[col.key];
@@ -872,11 +1046,13 @@
         const start = (currentPage - 1) * pageSize;
         const pagedData = filteredData.slice(start, start + pageSize);
 
-        // Reuse table if it exists to avoid focus loss
+        // Reuse table if it exists to avoid focus loss, but recreate if columns changed
         let table = container.querySelector('table');
-        if (!table) {
+        const currentTableApiType = table ? table.dataset.apiType : null;
+        if (!table || currentTableApiType !== apiType) {
             container.innerHTML = '';
             table = document.createElement('table');
+            table.dataset.apiType = apiType;
             const thead = document.createElement('thead');
             const headerRow = document.createElement('tr');
 
