@@ -391,6 +391,15 @@
         </div>
 
         <div class="control-group">
+            <label for="proxy-select">CORS Proxy</label>
+            <select id="proxy-select">
+                <option value="none">None (Direct)</option>
+                <option value="allorigins">AllOrigins</option>
+                <option value="thingproxy">ThingProxy</option>
+            </select>
+        </div>
+
+        <div class="control-group">
             <label>&nbsp;</label>
             <button id="show-all-btn" style="padding: 8px 12px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--accent); color: white; cursor: pointer; font-size: 14px; font-weight: bold;">Show All Tissues</button>
         </div>
@@ -460,16 +469,43 @@
     const anatomySearch = document.getElementById('anatomy-search');
     const minEnrichmentInput = document.getElementById('min-enrichment');
     const maxPValueInput = document.getElementById('max-pvalue');
+    const proxySelect = document.getElementById('proxy-select');
     const showAllBtn = document.getElementById('show-all-btn');
     const svgContainer = document.getElementById('svg-container');
     const loadingOverlay = document.getElementById('loading-overlay');
     const tooltip = document.getElementById('tooltip');
 
+    // Proxy helper
+    async function wrappedFetch(url) {
+        const proxy = proxySelect.value;
+        let finalUrl = url;
+
+        if (proxy === 'allorigins') {
+            finalUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        } else if (proxy === 'thingproxy') {
+            finalUrl = `https://thingproxy.freeboard.io/fetch/${url}`;
+        }
+
+        const res = await fetch(finalUrl);
+
+        if (proxy === 'allorigins') {
+            const json = await res.json();
+            // AllOrigins returns the content in a 'contents' field
+            return new Response(json.contents, {
+                status: res.status,
+                statusText: res.statusText,
+                headers: res.headers
+            });
+        }
+
+        return res;
+    }
+
     // Init
     async function init() {
         showLoading(true);
         try {
-            const phenotypesRes = await fetch(PHENOTYPES_API);
+            const phenotypesRes = await wrappedFetch(PHENOTYPES_API);
             const phenotypesData = await phenotypesRes.json();
             phenotypes = phenotypesData.data;
 
@@ -480,7 +516,7 @@
             await updateSVG();
         } catch (error) {
             console.error("Initialization failed:", error);
-            alert("Failed to load initial data. Please check connection.");
+            alert("Failed to load initial data. Please check connection. If you see CORS errors, try selecting a CORS Proxy from the dropdown.");
         }
         showLoading(false);
     }
@@ -527,6 +563,11 @@
     }
 
     function setupControls() {
+        proxySelect.addEventListener('change', () => {
+            if (phenotypes.length === 0) {
+                init();
+            }
+        });
         dataTypeSelect.addEventListener('change', updateVisualization);
         ancestrySelect.addEventListener('change', () => { currentPage = 1; updateVisualization(); renderTable(); });
         annotationSelect.addEventListener('change', () => { currentPage = 1; updateVisualization(); renderTable(); });
@@ -549,7 +590,7 @@
 
         showLoading(true);
         try {
-            const res = await fetch(ENRICHMENT_API + p.name);
+            const res = await wrappedFetch(ENRICHMENT_API + p.name);
             const data = await res.json();
             enrichmentData = data.data;
             updateVisualization();
@@ -564,7 +605,7 @@
         showLoading(true);
         const url = genderToggle.checked ? FEMALE_SVG_URL : MALE_SVG_URL;
         try {
-            const res = await fetch(url);
+            const res = await wrappedFetch(url);
             let svgText = await res.text();
 
             // Clean SVG colors
